@@ -1,0 +1,204 @@
+----------------------------------------------
+ACL: Access Control List访问控制列表
+---------------------------------------------- 
+
+作用：
+过滤流量
+1, 允许、拒绝数据包通过路由器
+2, 允许、拒绝Telnet会话的建立
+3, 没有设置ACL时，所有的数据包都会在网络上传输
+
+--- 交换机，路由器，防火墙都可以用到
+
+分类：
+1，标准访问列表(1-99) --- 检查源地址。通常允许、拒绝的是完整的协议（不区分协议，只要来自于这个IP的...）
+2，扩展访问列表(100-199) --- 检查源地址和目的地址。通常允许、拒绝的是某个特定的协议
+--- 检查IP层头部的protocol, 或者4层端口号
+
+1，二层ACL --- 检查MAC地址
+2，三层ACL --- 检查IP
+
+--- 可以放在进方向，也可以在出方向
+
+工作流程
+<1>路由器收到包，先查询路由表看是否可以转发
+<2>如果有ACL, 再经过ACL过滤
+<3>检测通过才可以转发
+
+--- 每个ACL规则： 条件，测试结果(Permit/Denny)
+--- 按顺序从第一条规则开始匹配，若没有结果，继续匹配后面的规则
+--- [HuaWei]特点：越精确，越优先。Cisco不支持
+--- [Cisco]特点：如果没有任何一条规则能得到结果。默认会被Denny --- 最后有一条Denny any 的规则
+
+----------------------------------------------
+标准ACL配置
+----------------------------------------------
+--- 最好用在靠近目的网段的路由器出口，因为标准ACL只能指定源，会影响到出去的所有的目的 [重在源]
+config#access-list 1 permit 192.168.1.0 0.0.0.255
+--- wildcard bits  通配符掩码，确定匹配范围
+--- wildcard bits 如果不写，默认是 0.0.0.0
+config#access-list 1 deny any
+--- 这一句可以不用写，Cisco默认的最后一条规则就是它
+--- 虽然都是数字1(表示第一个列表)，但是后面一条不会覆盖前面一条
+
+#show ip access-lists
+--- 查询ACL列表，可以有多个列表，用哪个列表，要看怎么调用的
+
+Or
+
+config#access-list 2 Denny 192.168.3.0 0.0.0.255
+config#access-list 2 permit 192.168.1.0 0.0.0.255
+
+config#access-list 3 Denny 192.168.3.0 0.0.0.255 
+config#access-list 3 permit any
+--- 只拒绝192.168.3.0
+
+----------------------------------------------
+在接口上使用ACL
+----------------------------------------------
+R3-bxj#conf t
+R3-bxj(config)#int fa0/1
+R3-bxj(config-if)#ip access-group 1 out
+
+--- ACL最好用在路由器的入口，避免多余的查找路由表的动作
+
+pc(192.168.3.1)>ping 192.168.2.1 --- 结果：目标主机不可达 
+pc>tracert 192.168.2.1 ---  检查到哪里被丢掉
+
+192.168.3.1(部门主管)允许访问192.168.2.0网络
+<1>
+config#access-list 1 permit 192.168.3.1 0.0.0.0 --- 注意调整顺序
+#no access-list 1 permit 192.168.3.1  --- 注意这样会把整个表都删掉，所以不要这样用
+
+<2>
+R3-bxj(config)#ip access-list standard 1  --- ACL中可以显示number, GNS3支持
+R3-bxj(config-std-nacl)#permit host 192.168.3.1
+
+R3-bxj(config-std-nacl)#15 permit 192.168.3.1 0.0.0.0
+
+----------------------------------------------
+扩展ACL
+----------------------------------------------
+--- 最好用在靠近源网段的路由器入口，[重在目的]
+e.g.
+HTTP服务器192.168.2.2
+--- 其他的服务都关闭
+--- 只对192.168.3.0 开放
+FTP服务器192.168.2.3 
+--- 其他的服务都关闭
+--- 创建用户名密码 cisco/cisco
+--- 只对192.168.1.0 开放
+
+conf t
+int fa 1/0
+no ip access-group 1 out
+
+config#acces-list 100 permit tcp 192.168.1.0 0.0.0.255 host 192.168.2.3 eq ftp
+Or
+config#acces-list 100 permit tcp 192.168.1.0 0.0.0.255 host 192.168.2.3 eq 21
+config#acces-list 100 permit tcp 192.168.1.0 0.0.0.255 host 192.168.2.3 eq 20
+--- 也可以用端口号20/21
+--- eq:等于，gt:大于等于，lt:小于等于 ......
+config#acces-list 100 permit tcp 192.168.3.0 0.0.0.255 host 192.168.2.2 eq www
+config#access-list 100 deny ip 192.168.1.0 0.0.0.255 any  --- 来自192.168.1.0网络的其他的流量都要拒绝
+config#access-list 100 deny ip 192.168.3.0 0.0.0.255 any  --- 来自192.168.3.0网络的其他的流量都要拒绝
+config#access-list 100 permit ip any any
+
+conf-if#ip access-group 100 out
+
+测试FTP
+pc>ftp 192.168.2.3
+cisco
+cisco
+
+测试HTTP
+浏览器中访问http://192.168.2.2
+
+----------------------------------------------
+ACL用于VTY(虚拟终端)
+----------------------------------------------
+允许192.168.2.1远程登录R1的虚拟终端
+#conf t
+#access-list 10 premit host 192.168.2.1 
+#line vty 0 4
+#access-class 10 in
+#password cisco
+#login
+
+
+pc>telnet 10.1.12.1
+cisco
+R1>
+
+只允许192.168.2.1以telnet远程登录R1的虚拟终端(SSH等不允许)
+#conf t
+#access-list 110 premit tcp host 192.168.2.1 any eq telnet  --- Or 23
+#line vty 0 4
+#access-class 110 in
+#password cisco
+#login
+
+使用命令访问列表: 可读性强，允许删除其中一条语句
+#conf t
+#ip access-list extend telnet  
+#permit tcp host 192.168.2.1 any eq 23 
+
+#conf t
+#ip access-list standard 1
+#no 10 --- 删除编号为10的ACL
+#13 permit 192.168.5.0 0.0.0.255
+
+R3-bxj(config)#ip access-list standard standard_1
+R3-bxj(config-std-nacl)#9 permit 192.168.6.0 0.0.0.255
+R3-bxj(config-std-nacl)#end
+R3-bxj#sho ip access-lists
+Standard IP access list 1
+    permit 192.168.1.0 0.0.0.255 (4 match(es))
+    permit host 192.168.3.1 (8 match(es))
+    permit host 192.168.3.2
+Standard IP access list standard_1
+    9 permit 192.168.6.0 0.0.0.255
+    10 permit 192.168.1.0 0.0.0.255
+
+R3-bxj(config)#ip access-list standard 2
+R3-bxj(config-std-nacl)#permit 192.168.3.0 0.0.0.255
+R3-bxj(config-std-nacl)#end
+--- 结果如下，数字2可能被解析成 access-list-number了，所以它的前面没有编号，换用一个有意义的名字可以看到编号
+R3-bxj#show ip access-lists
+Standard IP access list 1
+    permit 192.168.1.0 0.0.0.255 (4 match(es))
+    permit host 192.168.3.1 (8 match(es))
+    permit host 192.168.3.2
+Standard IP access list standard_1
+    9 permit 192.168.6.0 0.0.0.255
+    10 permit 192.168.1.0 0.0.0.255
+Standard IP access list 2
+    permit 192.168.1.0 0.0.0.255
+    permit 192.168.3.0 0.0.0.255
+Standard IP access list standard_2
+    10 permit 192.168.2.0 0.0.0.255
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

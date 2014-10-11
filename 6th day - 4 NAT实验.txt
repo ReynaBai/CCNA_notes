@@ -1,0 +1,68 @@
+1 Router0和Router2分别是两个用户网络的边界路由器；Router1是ISP的路由器，PC1是Internet上的用户
+2 用户A从ISP得到的公网IP地址是 1.1.1.1 ~ 1.1.1.5/24
+用户A从ISP得到的公网IP地址是 1.1.2.2
+3 要求用户A网络能访问到Internet
+4 用户B中的两台服务器能被Internet用户访问到。
+5 (新增)用户B中服务器之外的用户也要能访问外网, 为此，用户B从ISP得到了地址池1.1.2.3 ~ 1.1.2.5/24
+
+提示：
+运营商和两个用户的设备不要跑动态路由协议(RIP, OSPF)
+通常是从用户端配置一个默认路由到ISP路由器
+用户A动态NAT
+用户B静态NAT端口地址映射
+
+<1>路由设置
+R0设置默认路由
+#ip route 0.0.0.0 0.0.0.0 10.1.10.1
+R2设置默认路由
+#ip route 0.0.0.0 0.0.0.0 10.1.2.1
+R1配置静态路由
+Router(config)#ip route 1.1.1.0 255.255.255.0 10.1.10.2
+Router(config)#ip route 1.1.2.0 255.255.255.0 1.1.2.2
+
+<2>R0设置动态NAT
+#ip nat pool nds 1.1.1.1 1.1.1.5 netmask 255.255.255.0  --- 公有地址池，nds是名字
+#access-list 1 permit 192.168.1.0 0.0.0.255  ---- 只允许这个网段的用户使用公网IP
+#ip nat inside source list 1 pool nds --- 把二者关联起来
+
+在inside/outside接口上应用
+#int fa0/1
+#ip nat inside
+#int fa0/0
+#ip nat outside
+
+<3>test(1,2,3):
+PC0 ping 172.16.1.1 --- OK
+
+<4>R2设置静态NAT
+Router(config)#ip nat inside source static tcp 192.168.3.1 80 1.1.2.2 80  --- 192.168.3.1 inside, 1.1.2.2 outside
+Router(config)#ip nat inside source static tcp 192.168.3.2 20 1.1.2.2 20
+Router(config)#ip nat inside source static tcp 192.168.3.2 21 1.1.2.2 21
+在inside/outside接口上应用
+#int fa0/1
+#ip nat inside
+#int fa0/0
+#ip nat outside
+
+<5>test(4):
+192.168.1.3和外网之间是ping不同的，因为只开放了80, 20, 21端口
+PC0, PC1可以访问1.1.2.2的ftp, 并能浏览网页 --- OK
+
+<6>
+#ip nat pool nds 1.1.2.3 1.1.2.5 netmask 255.255.255.0
+#access-list 1 permit 192.168.3.0 0.0.0.255
+#ip nat inside source list 1 pool nds
+
+<7>test(5):
+192.168.3.0中的PC和server可以ping通172.16.1.1
+--- Server同时应用了两条NAT规则：
+端口静态映射和地址池动态映射
+但是静态映射优先。所以80/20/21端口还是通过端口静态映射规则起作用
+
+
+
+
+
+
+
+

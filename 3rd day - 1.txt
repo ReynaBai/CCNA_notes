@@ -1,0 +1,462 @@
+----------------------------------------------
+帧交换
+
+----------------------------------------------
+直通转发：交换机检测到目的地址之后即转发帧(不管数据帧有没有错误，是否合法)
+存储转发：完整地收到帧并检查无错之后才转发
+                数据帧的大小：64~1518 二层的头部和尾巴加起来是18个字节。不足64字节的需要在上层填充到64字节之后再发出来
+                对设备的内存，接口的缓存要求高 --- 主流厂家使用
+无碎片转发： 直通转发的修订版，交换机检测到帧的前64字节后即转发 --- Cat1900的缺省模式
+
+
+----------------------------------------------
+双工综述
+----------------------------------------------
+单工：光纤(一收一发两根光纤)
+半双工：集线器
+全双工：交换机
+
+Switch#show int fa0/1
+...
+ Full-duplex, 100Mb/s
+...
+
+[设置]
+Switch#   conf t
+Enter configuration commands, one per line.  End with CNTL/Z.
+Switch(config)#int fa0/1
+Switch(config-if)#duplex ?
+  auto  Enable AUTO duplex configuration
+  full  Force full duplex operation
+  half  Force half-duplex operation
+
+链路两端：
+auto + auto ---  ok, full
+auto + full --- ok, full
+auto +half --- ok, half
+full + full --- ok, full
+full+half --- 不能工作
+
+0 input errors, --- 如果errors很多，可能是双工不匹配问题导致的
+
+----------------------------------------------
+速率
+----------------------------------------------
+链路两端：
+100Mb/s + 10Mbit/s --- 可能会丢包
+
+速率也可以配置
+
+----------------------------------------------
+VLAN
+----------------------------------------------
+二层里唯一一个广播域的风险：蠕虫病毒，ARP病毒
+在二层网络里隔离
+
+trunk 链路
+在网络的分层结构和宽带的合理分配方面，TRUNK被解释为“端口汇聚”，是带宽扩展和链路备份的一个重要途径。TRUNK把多个物理端口捆绑在一起当作一个逻辑端口使用，可以把多组端口的宽带叠加起来使用。TRUNK技术可以实现TRUNK内部多条链路互为备份的功能，即当一条链路出现故障时，不影响其他链路的工作，同时多链路之间还能实现流量均衡，就像我们熟悉的打印机池和MODEM池一样。
+
+对于VLAN来说，网关是由 给这个VLAN分配一个逻辑的虚拟接口实现的  ---  SVI(虚拟网关接口)：交换虚拟接口 --- 跨VLAN之间通信的时候用到
+
+[三层交换机上创建vlan虚拟接口]
+Switch(config)#int vlan 1
+
+Switch(config-if)#
+Switch(config-if)#ip add 10.1.1.254 255.255.255.0   --- 在三层交换机上设置SVI
+
+Switch# show int vlan1
+Vlan1 is administratively down, line protocol is down
+  Hardware is CPU Interface, address is 0030.a351.a37e (bia 0030.a351.a37e)
+  Internet address is 10.1.1.254/24
+...
+Switch#
+
+
+[同一个vlan在同一台交换机上通讯]
+MAC地址表
+[同一个vlan跨交换机通讯]
+依靠交换机之间的互连链路：
+(1)接入模式Access  --- 当前端口只能传递一个vlan的数据，数据帧不带标记 --- 一般接的是Host，或其他非交换机设备
+(2)主干模式Trunk --- 可以传递多个vlan数据。可以发送带标记的帧
+(3)混杂模式
+
+Switch#show int fa0/1 switchport
+...
+Operational Mode: static access
+...
+
+--- 只有交换机支持带vlan标记的帧，Host一般不支持
+--- 下连的所有的设备都是同一个vlan的，用Access模式。若属于不同的vlan用trunk
+--- 这两种模式可以协商
+Switch(config-if)#switchport mode ?
+  access   Set trunking mode to ACCESS unconditionally
+  dynamic  Set trunking mode to dynamically negotiate access or trunk mode
+  trunk    Set trunking mode to TRUNK unconditionally
+
+
+----------------------------------------------
+静态VLAN
+----------------------------------------------
+根据交换机的端口配置VLAN
+
+----------------------------------------------
+动态VLAN
+----------------------------------------------
+根据接入端口的IP或MAC信息划分VLAN
+
+Cisco 2950 可以创建1000个vlan
+<1-2005>, 1002 - 1005有特殊用途(令牌环等网络用，以太网中不用)
+vlan1是默认vlan
+
+[添加端口到vlan]
+#conf t
+#vlan 10
+#name vlan_A
+#vlan 20
+#name vlan_B
+#int fa0/3
+#switchport access vlan 10
+
+[添加多个端口到vlan]
+#conf t
+#int range fa0/1 - 20
+#sw acc vl 20
+
+[跨VLAN通信]
+需要一个三层交换机
+(1)配置SVI三层虚拟接口和IP地址
+Switch(config)#int vlan 1
+Switch(config-if)#
+Switch(config-if)#ip add 10.1.1.254 255.255.255.0
+Switch(config-if)#no shut
+#show ip int brief 可以看得到新增加的虚拟接口
+
+pc>ping ..
+第一个包会超时，因为在作ARP请求
+pc>arp -a  --- 查看MAC地址表
+
+(2)也可以在物理接口上设置VLAN和IP地址 --- 很少用
+Cisco可以在三层交换机接口上直接配IP地址. --- Cisco特有的
+
+#conf t
+#int fa0/1
+#no switchport
+#ip add 10.1.1.254 255.255.255.0
+
+(3)为避免购买较贵的三层交换机
+可以用：
+路由器
+Linux软件路由
+
+如果路由器只有2个端口，一个用于连外网(运营商)，一个连内网，--- 单臂路由 --- 单物理链路承载多个局域网
+
+<1>PC1发出的包：
+源MAC, 源IP是自己的MAC, IP
+目的MAC: 三层网关MAC，目的IP: 目的PC IP  --- 虚拟接口的MAC是系统内部分配的 --- 是否会有冲突
+<2>到达根桥之后：
+源MAC, 源IP是根桥的MAC, IP
+目的MAC, IP是目的PC的MAC和IP
+
+--- #show int发现所有的SVI接口拥有同一个MAC地址
+
+----------------------------------------------
+Trunk 链路协议
+----------------------------------------------
+ISL: 26字节头 + 以太帧 + CRC(4字节)
+其中有10bit的VLAN号 --- 1024个VLAN
+--- Cisco自己的，基本不用了
+IEEE802.1Q：插入4字节字段
+其中有12bit的VLAN号 --- 4096个VLAN， 实际是4094，最小0和最大4095都是保留的，不可用
+
+3560以上才支持 ISL
+动态协商的结果是802.1Q
+#switchport trunk encapsolution dot1q
+
+--- vlan1: native vlan, 在trunk链路上不必打标记
+
+[可以手动设置trunk支持的vlan]
+Switch(config-if)#switchport trunk allowed vlan 10
+Switch(config-if)#switchport trunk allowed vlan 20
+
+#show int trunk --- 检查trunk链路
+
+----------------------------------------------
+VTP协议 ： 域名，模式，配置，密码
+----------------------------------------------
+Vlan Trunking Protocol
+(1)一个能够宣告VLAN配置信息的信息系统
+Vlan name
+Vlan ID
+Vlan type
+...
+(2)通过一个共有的管理域，维持VLAN配置信息的一致性
+(3)VTP只能在主干(trunk)端口发送要宣告的信息
+(4)支持混合的介质主干连接(快速以太网，...)
+
+--- VTP是Cisco专有的
+--- GVRP：业界标准的同步VLAN信息的协议
+
+[VTP模式]
+服务器模式：创建，修改，删除；发送/转发；同步；存储于NVRAM
+客户模式(孤岛)：创建，修改，删除；发送/转发；同步；存储于NVRAM
+透明模式(被动学习)：发送/转发；同步；不会存储于NVRAM
+
+Switch#show vtp status
+VTP Version                     : 2
+Configuration Revision          : 4
+Maximum VLANs supported locally : 255
+Number of existing VLANs        : 7
+VTP Operating Mode              : Server
+VTP Domain Name                 :
+VTP Pruning Mode                : Disabled
+VTP V2 Mode                     : Disabled
+VTP Traps Generation            : Disabled
+MD5 digest                      : 0x1F 0xD0 0x79 0xB0 0xD5 0xFB 0x60 0xE4
+Configuration last modified by 0.0.0.0 at 3-1-93 01:51:02
+Local updater ID is 0.0.0.0 (no valid interface found)
+
+[VTP如何工作]
+Server 每隔5分钟或在有变化时发送VTP宣告消息，以组播的方式发送
+--- Server交换机down了之后，没有人再每隔5分钟发消息了，客户模式交换机在重启之后会丢失已经学习到的VLAN信息
+--- 通常会有备份的Server交换机
+--- 客户模式和服务器模式交换机之间可以互相同步
+--- 同步时根据版本号VTP Version, 用新的版本替换旧的
+--- 问题：如果不小心介入一个拥有较高版本的VTP信息的交换机，会把同一个管理域的所有交换机的VLAN信息更新到
+     解决：改成透明模式，改成透明模式之后版本号会自动降为0
+     解决2：改域名(不太好)，因为域名不同，不能转发，可能会影响其他交换机更新信息
+--- 版本号：4个字节
+--- 同步是完全覆盖，不能合并，所以需要的所有的VLAN信息都要在核心Server交换机上记录
+--- client 若初始是空域名，会用它接收到的第一个VTP信息的domain设置为自己的domain
+--- 版本的更新：每一个修改命令都会导致版本加1 --- vlan操作才会更新版本
+--- VTP只发送vlan信息，不包括端口，端口需要在每个client中自己配置
+
+[客户端主动发VTP消息的两种情况]
+--- 客户端在收到版本比自己低的VTP信息时，会把自己的高版本的VLAN信息转发给服务器 --- 只有在这种情况下才能触发，它自己不会主动发出自己的VTP信息
+--- 客户端开机时，主动从服务器请求VTP信息
+
+[VTP认证]
+可以在客户端和服务器端之间设置认证(md5)
+#conf t
+#vtp password cisco
+
+[组播]
+01:00:0c:cc:cc:cc  ---- Cisco私有的组播MAC地址
+
+[VTP配置]
+--- in server
+#conf t
+#vtp mode server
+#vtp domain cisco
+#vtp pass cisco123
+#vlan 10
+#vlan 20
+--- in client
+#conf t
+#vtp mode client
+#vtp domain cisco
+#vtp pass cisco123
+
+[VTP裁剪]
+通过阻止不必要数据的泛洪传送来增加可用的带宽
+仅泛洪到已有端口被分配到特定vlan的所有交换机 --- 端口需要知道它的下游有哪些vlan
+--- 下游交换机需要发送vlan加入(Join)消息到上游交换机端口
+--- (1)switchport access vlan 10 ---Join消息
+--- (2)端口必须是up的
+
+VTP Pruning Mode 默认是disable的，模拟器上不能修改，真机上才可以
+
+----------------------------------------------
+VLAN配置的原则
+----------------------------------------------
+(1)支持的最大的VLAN数取决于交换机
+(2)
+(3)VLAN1是出厂缺省配置的
+(4)CDP和VTP宣告被发送到VLAN1
+
+
+----------------------------------------------
+实验
+----------------------------------------------
+test
+28楼交换机
+27楼交换机
+中心交换机
+
+----------------------------------------------
+需求1：
+----------------------------------------------
+部门A VLAN 10 10.1.1.0/24 10.1.1.254
+部门B VLAN 20 10.1.2.0/24 10.1.1.254
+switch0: fa0/2-20 -> 部门A, fa0/21-24 -> 部门B, fa0/1作为上行
+switch1: fa0/2-10 -> 部门B, fa0/1作为上行
+switch2: fa0/10-20 -> 部门A, fa0/1, fa0/2用于级联switch0/switch1
+
+(1)VLAN和接口配置
+
+--- in sw0
+Switch#config terminal
+Switch(config)#hostname sw0
+sw0(config)#enable password cisco123
+sw0(config)#end
+sw0#show running-config
+sw0#copy running-config startup-config
+sw0#conf t
+sw0(config)#vlan 10  ---- 添加vlan
+sw0(config-vlan)#name A
+sw0(config-vlan)#vlan 20
+sw0(config-vlan)#name B 
+sw0(config-vlan)#exit
+sw0(config)#int range fa0/2-20  --- 真机下'-'前后要有空格
+sw0(config-if-range)#switchport mode access --- 缺省已是access模式，不必设置也行
+sw0(config-if-range)#switchport access vlan 10
+sw0(config-if-range)#exit
+sw0(config)#int range fa0/21-24
+sw0(config-if-range)#switchport access vlan 20
+
+--- in sw2
+Switch#conf t
+Switch(config)#host
+Switch(config)#hostname sw2
+sw2(config)#enable secret cisco123
+sw2(config)#vlan 10
+sw2(config-vlan)#name A
+sw2(config)#int range fa0/10-20
+sw2(config-if-range)#switchport access vlan 10
+sw2#  copy running-config startup-config 
+
+
+--- in sw1
+Switch#conf t
+Switch(config)#hostname sw1
+sw1(config)#enable secret cisco123
+sw1(config)#vlan 20
+sw1(config-vlan)#name B
+sw1(config-vlan)#exit
+sw1(config)#int range fa0/2-20
+sw1(config-if-range)#switchport access vlan 20
+
+交换机之间的链路默认是vlan1的
+
+(2)trunk配置
+
+-- in sw0
+sw0#conf t
+sw0(config)#int fa0/1
+sw0(config-if)#switchport mode trunk
+sw0(config-if)#switchport trunk allowed vlan 10,20
+sw1#wr 
+sw1#show int trunk 
+
+-- in sw2
+sw2#conf t
+sw2(config)#iint range fa0/1-2
+sw2(config-if)#switchport mode trunk
+sw2(config-if-range)#switchport mode trunk  -- 修改模式后，端口会重启up->down->up 
+sw2(config-if-range)#switchport trunk allowed vlan 10,20
+sw1#wr 
+sw1#show int trunk 
+
+-- in sw1
+sw1#conf t
+sw1(config)#int fa0/1
+sw1(config-if)#sw mo tr
+sw1(config-if)#sw tr all vl 10,20
+sw1#wr 
+sw1#show int trunk 
+
+
+二层交换机只能配一个IP, 用于网管
+
+(3)三层交换机
+
+--- in sw2
+sw2#conf t
+sw2(config)#int fa0/3
+sw2(config-if)#switchport mode trunk 
+
+--- in sw core
+Switch#conf t
+Enter configuration commands, one per line.  End with CNTL/Z.
+Switch(config)#hostname core
+core(config)#vlan 10
+core(config-vlan)#name A
+core(config-vlan)#vlan 20
+core(config-vlan)#name B
+core(config-vlan)#exit
+core(config-if)#switchport trunk encapsulation dot1q   --- 默认auto下不能设置trunk
+core(config-if)#switchport mode trunk
+
+(3)SVI接口--- 三层虚拟网关
+--- in sw core
+core(config-if)#int vlan 10
+core(config-if)#ip add 10.1.1.254 255.255.255.0
+core(config-if)#int vlan 20
+core(config-if)#ip add 10.1.2.254 255.255.255.0
+core#show ip interface brief
+
+
+这样跨网段还是ping不通
+--- in sw core
+core(config)#ip routing   --- ip routing 用于三层交换机上打开路由功能，默认是关闭的. 真机默认也是关闭的
+之后可以
+
+怎么工作的？
+
+----------------------------------------------
+需求2：
+----------------------------------------------
+VTP
+
+删除client switch的vlan --- 这里只是删除vlan, 没有删掉端口所在的vlan的配置
+#conf t
+#no vlan 10
+#no vlan 20 ---
+
+
+
+--- in sw core
+core#conf t
+core(config)#vtp mode server
+core(config)#vtp domain cisco
+core(config)#vtp password cisco123
+core(config)#vlan 10
+core(config-vlan)#name A
+core(config-vlan)#vlan 20
+core(config-vlan)#name B
+
+--- others
+conf t
+vtp mode client
+vtp domain cisco
+vtp password cisco123
+
+
+----------------------------------------------
+需求3：
+----------------------------------------------
+生成树 --- 注意这里有两个vlan, 分别会计算自己的STP
+[取消端口24]
+sw0(config)#int fa0/24
+sw0(config-if)#no switchport access vlan 20
+sw0(config-if)#switchport mode trunk
+
+[添加一条线路形成环]
+#spanning-tree mode pvst --- 默认是启动的，不必设置
+show spanning-tree vlan 10 --- 单独查看每个vlan可以找到阻塞端口(当两个vlan的阻塞端口不一样时，界面显示所有端口都是活动的，因为是另一个vlan在用)
+
+[把根桥改到core switch]
+core(config)#spanning-tree vlan 10 root primary
+或者
+core(config)#spanning-tree vlan 10 priority 0
+
+[指定另外一条路径作为根路径]
+增大原有端口的开销值
+sw1(config)#int fa0/1
+sw1(config-if)#spanning-tree vlan 10 cost xxx
+
+
+
+
+
+
+

@@ -1,0 +1,114 @@
+2层链路协议
+
+<1>使用虚电路建立连接 --- 在一个物理连接上建立多条虚电路
+<2>
+----------------------------------------------
+两种虚电路
+----------------------------------------------
+SVC: 临时的
+PVC: 永久的 
+--- 虽然链路是永久的，但是中间连接的物理中继线路不是固定的，可以动态更新。
+--- PVC链路一旦确定，会独占带宽。帧中继设备中需要预留出它的带宽不能被其它链路占用 --- 分组交换不同，空闲时不会占用带宽
+--- 帧中继设备可支持的PVC数量是有限的
+
+----------------------------------------------
+地址映射
+----------------------------------------------
+--- 本地每一个PVC应该和哪一个IP相关联？
+DLCI 号(2层)关联到对方的IP(3层)  --- 和ARP相反，所以叫反向ARP
+Frame Relay - DLCI(500) - IP 10.1.1.1
+--- 动态建立，也可以手动设置
+
+LMI: 本地管理接口
+--- 运营商分配的PVC都是通过LMI发送给用户的 (e.g. DLCI 110信息)
+--- 可用于检测PVC状态
+
+PVC一但建立，双方会互发反向ARP信息，使双方建立起反向ARP表
+R1(IP 10.2.1.1)
+DLCI 100 - IP 10.1.1.1
+R2(IP 10.1.1.1)
+DLCI 400 - IP 10.2.1.1
+
+帧中继交换机创建PVC
+
+
+----------------------------------------------
+帧中继实验
+----------------------------------------------
+0:102  1:201
+0:103  2:301
+
+
+Cisco路由器(R4)也可以模拟帧中继交换机
+总公司路由器(R1)
+分公司路由器(R2,R3)
+
+R1接口设置为帧中继
+#conf t
+#host HQ
+#int s0/0
+#encap... frame-relay
+#ip add 10.1.1.1 255.255.255.0
+#no sh
+#end
+#show int s0/0
+
+R2
+#conf t
+#host HQ-2
+#int s0/0
+#encap... frame-relay
+#ip add 10.1.1.2 255.255.255.0
+#no sh
+#end
+#show int s0/0
+
+R3
+#conf t
+#host HQ-3
+#int s0/0
+#encap... frame-relay
+#ip add 10.1.1.3 255.255.255.0
+#no sh
+#end
+#show int s0/0
+
+R4
+S0/0的102PVC -> S0/2的201
+S0/0的103PVC -> S0/1的301
+
+#conf t
+#frame-relay switching
+#int s0/0
+#en fr
+#frame-relay intf-type dce
+#frame-relay  route 102 int s0/2 201
+#frame-relay  route 103 int s0/1 301
+#int s0/2
+#frame-relay intf-type dce
+#frame-relay  route 201 int s0/0 102
+#int s0/1
+#frame-relay intf-type dce
+#frame-relay  route 301 int s0/0 103
+#end
+#sh frame-relay route
+
+test in R1
+#sh frame-relay pvc
+#sh frame-relay map
+#ping 10.1.1.2 --- ok
+#ping 10.1.1.3 --- ok
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 

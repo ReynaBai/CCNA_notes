@@ -1,0 +1,43 @@
+1, 要求192.168.1.0只能访问192.168.2.0中的web Server.
+192.168.3.0只能访问192.168.2.0中的FTP Server
+不能影响其它业务，192.168.2.0访问Internet的业务不能受影响
+
+--- 扩展ACL建议放在距离源近的地方，但实验环境的拓扑环境中，放在目的端较好
+R3
+config#acces-list 100 permit tcp 192.168.1.0 0.0.0.255 host 192.168.2.2 eq www
+config#acces-list 100 deny ip 192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255
+config#acces-list 100 permit tcp 192.168.3.0 0.0.0.255 host 192.168.2.3 eq ftp
+config#acces-list 100 deny ip 192.168.3.0 0.0.0.255 192.168.2.0 0.0.0.255
+config#acces-list 100 permit ip any any
+R3-bxj(config)#int fa0/1
+R3-bxj(config-if)#ip access-group 100 out
+
+2, 192.168.3.0只能被192.168.2.0访问
+R1 标准ACL 
+config#access-list 1 permit 192.168.2.0 0.0.0.255
+R1-bxj(config)#int fa1/0
+R1-bxj(config-if)#ip access-group 1 out
+--- 测试：
+(1)1.0不能访问3.0.
+(2)3.0到2.0的ftp可以工作就说明2.0可以访问3.0了 
+
+3, Router 1只能接受192.168.2.0中的PC进行telnet连接
+R1
+<1>打开telnet服务
+#conf t
+#line vty 0 4  --- 允许5个虚拟终端
+R1-bxj(config-line)#password cisco
+R1-bxj(config-line)#login
+R1-bxj(config-line)#access-class 1 in
+
+注意：
+测试时要ping主机而不是网络192.168.3.0, 因为ping网络号是Router回复的
+
+----------------------------------------------
+VTY
+----------------------------------------------
+VTY(Virtual Teletype Terminal)虚拟终端，一种网络设备的连接方式（A command line interface created in a router for a Telnet session. The router is able to generate a VTY dynamically. ）
+在电信运营商的设备维护领域应用广泛。如路由器或者交换机远程登陆的虚拟端口。
+VTY在不同的线路上，可以配置不同的协议，如在line vty 0上配置telnet，在line vty 1上配置ssh，这样当SSH用户登录时，系统会让line vty 0空闲，而使用line vty 1进行连接。
+
+

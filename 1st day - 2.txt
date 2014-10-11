@@ -1,0 +1,132 @@
+----------------------------------------------
+TCP/IP协议栈
+----------------------------------------------
+应用层
+传输层
+IP层：Internet 层
+网络接口层： 数据链路层，网络层的合并
+
+- 文件传输
+TFTP
+FTP
+NFS: 是Network File System的简写，即网络文件系统
+- E-Mail
+SMTP, POP3
+- 远程登录
+Telnet
+rlogin
+SSH
+- 名称管理
+DNS
+
+TCP面向连接，UDP非面向连接
+DNS基于UDP, 但是DNS建立连接用的是TCP
+TFTP基于UDP
+FTP
+
+----------------------------------------------
+TCP
+
+----------------------------------------------
+test:
+R1#telnet 10.101.2.1
+
+
+Source Port: 随机选择
+Destination Port: 
+Sequence Number: 实现可靠传输
+Acknowledgement number: 实现可靠传输
+Flags: 包含很多个标识
+-Fin:
+-Reset: 重置连接
+-Push: 接收端必须上传到上层应用
+-Urgent: 
+-ACK
+-syn
+-...
+Window size: 4119 告诉别人我们能接收多少
+
+三次握手的flag:
+(1)SYN
+(2)SYN, ACK
+(3)ACK
+----------------------------------------------
+UDP
+
+----------------------------------------------
+Source port: 源端口
+Destination port: 目的端口
+length: 数据长度
+checksum: 校验
+data:
+
+test
+#ping www.baidu.com --- 有DNS解析过程
+
+----------------------------------------------
+Internet 层
+
+----------------------------------------------
+IP, ICMP, ARP, RARP, OSPF, 
+SS协议直接基于链路层
+
+- ping:
+ICMP request
+reply
+timeout：线路故障... windows超时时间2s
+目标不可达：路由器回复说找不到IP
+
+- tracert 也用到了ICMP
+源到目的，中间每一跳的IP
+基于UDP
+每次transroute报文会出去3个包
+(1)TTL为0丢弃后，回复一个ICMP TTL exceed. 得到第一跳IP地址
+(2)发送TTL=2的包
+(3)发送TTL=3的包
+
+- ICMP重定向
+把次优路径改成最优路径例如： PC1->R1->R2->PC2, PC1->R2->PC2
+不会对当前包的传输路径有影响，只会通知PC1更新路由表，以便之后使用
+
+#show ip int fa0/0
+...
+ICMP redirects are always sent  --- ICMP重定向已打开
+
+- ARP协议
+我知道对方的IP, 需要查找它的MAC
+
+它没有IP头
+
+R1#clear arp-catche
+#sh arp
+#int fa0/0
+#shut
+#sh arp
+此时 ping 发出5个包，第一个超时了，因为它在发送ARP请求(Broadcast: FFFFFFFFFFFF)
+待ARP表建立起来之后，后面的4个包都得到了回复
+
+交换机端口镜(正常的应用)，把发送的其他端口的数据copy一份到特定的端口，用于备份 --- monitor ... source ... destination
+ARP攻击，ARP欺骗：伪造其它IP的MAC地址 --- 中间人攻击
+如何防范：交换机上端口绑定(难维护)；DHCP snooping 获取每个终端的IP地址，在交换机上建一个IP/端口表，检测IP报文，检测ARP报文
+
+- RARP
+现在基本不用了，以前用于无盘终端
+我知道自己的MAC，请分配给我一个IP
+
+----------------------------------------------
+端口号
+
+----------------------------------------------
+FTP:21
+
+----------------------------------------------
+IP包头中的Protocol
+
+----------------------------------------------
+6:TCP
+17:UDP
+1:IGMP
+
+
+
+

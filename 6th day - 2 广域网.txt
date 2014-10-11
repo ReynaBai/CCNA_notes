@@ -1,0 +1,95 @@
+租用线路: HDLC, PPP, SLIP
+电路交换（按虚链路）: 
+包交换 --- 同步串行线缆 X.25, Frame Relay, ATM
+
+现在常用的是光纤(以太网)
+
+Router模块中WIC是广域网接口卡，常用WIC-1T, WIC-2T
+
+串行线缆连接DCE和DTE
+
+----------------------------------------------
+HDLC
+----------------------------------------------
+高级数据链路协议
+
+----------------------------------------------
+PPP
+----------------------------------------------
+两种认证方式:PAP, CHAP
+
+----------------------------------------------
+PAP
+---------------------------------------------- 
+R1/R2同时配置PPP
+#conf t
+#int s0/0
+#encapsulation ppp
+#ppp authentication pap --- 启用认证之后，认证失败，会导致接口down掉
+R2
+#conf t
+#username nds
+#password cisco
+R1:
+#conf t
+#int s0/0
+#ppp pap sent-username nds password cisco
+--- 认证过程有两个包
+PPP PAP Authenticate Request
+PPP PAP Authenticate ACK
+
+----------------------------------------------
+CHAP
+----------------------------------------------
+--- 4次握手，MD5的输入id/随机数/密码
+--- 可以在全局数据库记录挑战用户和密码。也可以在接口下指定挑战用户和密码
+--- 
+R2(挑战方)
+#conf t
+#no ppp au.. pap
+--- 挑战方发送用户名R2, 密码cisco
+
+R1(客户端)
+--- 客户端从全局数据库查找挑战方用户R2, 和密码 --- 找到了就用这个密码加上自己的用户名发出去
+--- 若全局找不到，就从接口找用户名和密码
+--- 发的时候优先发接口上指定的用户，如果接口没有指定用户，发hostname
+#conf t
+#int s0/0
+#ppp chap hostname nds password cisco --- 注意最后不要有空格，空格也会作为密码的一部分
+#no shut
+--- 认证过程有3个包
+R2发Challenge，挑战name:R2, id:1, 哈希值
+R1回应Response,  name:nds, id:1, 哈希值
+R2回应Success
+
+Or
+R1(客户端)配置全局数据库
+
+--- 客户端回应消息发出的用户，一定要在服务器端有备案
+--- 双向认证：两边都启用了CHAP认证. 两边的password要一样
+R1
+#hostname left
+#username right password sameone
+R2
+#hostname right
+#username left password sameone
+
+Q:
+<1>挑战消息何时发认证？
+LCP在建立链路时，如果需要认证，挑战方就会发Request包过去
+
+
+----------------------------------------------
+Md5
+----------------------------------------------
+--- 随机数可以避免外人直接使用加密后的值
+--- 防重发攻击：key
+
+
+
+
+ 
+
+
+
+

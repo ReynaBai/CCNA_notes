@@ -1,0 +1,196 @@
+----------------------------------------------
+Cisco 设备安装，连接
+
+----------------------------------------------
+Cisco推荐的流行的组网方式：核心交换机 -> 汇聚交换机 -> 楼层交换机
+例如：
+核心交换机(可以有一个备份的核心交换机) -> 汇聚交换机(每栋楼) -> 楼层交换机
+备份的核心交换机：业务分流；避免其中一个故障
+
+
+屏蔽双绞线(STP)
+非屏蔽双绞线(UTP) --- 常用
+同轴电缆
+光纤:多模(1000米以内)，单模(>1000米的距离)
+
+RJ-45
+AUI 接粗同轴电缆
+Console口，连控制台用的，跑串行协议，另一端连串口
+AUX: 连Model, 用于远程控制
+WIC-1T: WIC表示广域网模块，T表示串口模块
+
+ISR:集成服务路由器：支持数据，音视频... 
+
+交换机接口:12,24,48
+可以根据对方设备决定工作在10M还是100M
+RJ-45分为电口，光口
+
+光模块
+GBIC 
+SFP 1G
+XFP  10G
+不要拿眼睛对着光口看，容易伤眼睛
+
+光口是长方形的，接入SFP之后就可以接光纤了。 有输入输出两跟光纤
+
+网线：
+8个铜片，8种颜色
+做线标准：568A/568B(常用)
+568B: 橙白/橙/绿白/蓝/蓝白/绿/棕白/棕
+568A: 绿白/绿/橙白/蓝/蓝白/橙/棕白/棕 和568B相比，1/3, 2/6互换
+两边线序一样的是直通线，否则是交叉线
+两个端口均标有(或没有)x时用交叉线
+现在都用直通线就好了，一般端口都可以自适应 
+
+PSTN: 
+ISDN: 综合业务数据网
+ISDN-BRI口: 2B+D
+ISDN-PRI口: 30B+D
+
+企业接入网络
+光纤
+DDN专线，比较老，2M
+MSTP
+
+DCE: 运营商设备
+DTE: 数据传输
+
+链路层协议： PPP, HDLC, 帧中继
+
+
+固化设备/模块化设备
+4507: 其中的7表示槽位数量
+
+端口波特率：9600
+
+Router>show
+Router>enable  -- 取得管理员权限
+Router#
+
+
+int f0/0
+no shut
+end
+
+host R2 --- 重命名
+ctrl+shift+6 --- 中断
+
+----------------------------------------------
+Cisco 路由器
+
+----------------------------------------------
+内部组件
+ROM --- 
+RAM --- 内存
+Flash --- 外置存储器,一个flash中可以存储多个IOS
+NVRAM -- 非易失，可擦写，保存配置文件
+
+
+Router#show flash
+
+System flash directory:
+File  Length   Name/status
+  3   33591768 c1841-advipservicesk9-mz.124-15.T1.bin   ---  IOS 网络操作系统
+  2   28282    sigdef-category.xml
+  1   227537   sigdef-default.xml
+[33847587 bytes used, 30168797 available, 64016384 total]
+63488K bytes of processor board System flash (Read/Write)
+
+IOS的命名: 
+1841:型号
+adv：高级版本
+ipservicesk9-mz --- 特性集
+124：主版本
+15：修订版本
+T1: 次版本
+
+路由器启动
+(1)POST自检
+(2)Bootstrap
+(3)加载IOS
+(4)加载配置文件
+
+寄存器
+0x2102
+第三个数字0表示加载Flash中的IOS, 4表示加载mini IOS
+
+引导过程
+(1)NVRAM查看config-register
+(2)NVRAM配置文件查看boot system从哪里加载IOS
+(3)无boot system则加载flash中第一个IOS
+...
+从flash中找IOS , 找不到会从网络中找IOS, 找不到会找mini IOS
+ROMMON> 表示IOS加载失败，这个模式下不能做配置，只能改寄存器的值，拷贝，删除文件
+
+如何升级设备的IOS
+从 Cisco官网下载最新的IOS软件
+建TFTP服务器
+Router连至tftp server
+#copy tftp: flash:
+之后按提示输入IP, name
+之后启动新的IOS软件
+#boot system flash:ios-1.bin
+
+烧录不同区域
+RAM system:
+NVRAM nvram:
+FLASH flash:
+
+不知道Cisco设备密码时，如何破解
+设备重新加电
+30秒内按住Ctrl+B
+进入ROMMON模式（加载的是mini IOS）把寄存器的值从2102改成2142, 它就不加载配置文件
+(或进入特权EXEC模式 Router(config)#config-register 0x2142)
+#config-register 0x2142
+#boot reset  --- 以初始化配置启动（没有密码）
+启动后，可以修改密码
+#copy startup-config running-config  --- 把老的配置拷贝回来，后面只是改密码，其它的参数保留
+#enable password cisco123
+#copy running-config startup-config
+#write
+之后再把寄存器的值改回去0x2102 ...
+
+c?i?s?c?o? ?C?o?n?f?i?g?u?r?a?t?i?o?n? ?R?e?g?i?s?t?e?r
+http://wenku.baidu.com/link?url=WeCXxrDoKJ9vDVXId8HliQKq-Oj2wmOCCYfwA2NrP4FkvgYnVTuMh5gdZgR6UobHxegRDHUy0F9_mv-_ExovxGkORjtgxgHFqCw_XgvOvw7
+0x2102 ：标准默认值    
+0x2142 ：从FLASH中启动，但不使用NVRAM中的配置文件（用于口令恢复）    
+0x2101 ：从Boot RAM中启动，应用于更新系统文件     
+0x2141 ：从Boot RAM中启动，但不使用NVRAM中的配置文件    其中C位的第三位为1时表示关闭Break键，反之表示打开Break键。     
+0x141：表示关闭Break键，不使用NVRAM中的配置文件，并且从系统默认的ROM中    的系统中启动。    
+0x0040：表示允许路由器读取NVRAM中的配置文件。 
+
+用CDP发现直接相邻的设备
+CDP协议： Cisco私有的发现协议，发现直接相邻的设备，包括主机名，IP...
+报文封装在SNAP中
+- show cdp neighbors
+- show cdp neighbors detail
+对放邻居必须是Cisco设备
+
+CDP默认是运行的
+-cdp run
+-end
+-int fa0/0
+-cdp enable
+-end
+连用户的设备或者是第三方厂商设备时，最好把CDP关掉
+-int fa0/0
+- no cdp enable
+-end
+
+
+用telnet连接
+<ctrl+shift+6>  --- 挂起
+disconnect  --- 断开连接
+
+
+
+
+
+
+
+
+
+
+
+
+

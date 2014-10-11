@@ -1,0 +1,174 @@
+----------------------------------------------
+交换机
+
+----------------------------------------------
+交换机三个功能
+1 地址学习
+2 帧的转发/过滤
+3 防止回路
+
+如果交换机没有MAC表，所有的流量都是泛洪处理，相当于一个Hub
+交换机收到广播，会在同一个VLAN中泛洪处理
+
+冗余网络拓扑
+单点故障：两个交换机连接到同一个核心交换机(网关在其上)，风险在于，核心交换机坏了，两个交换机之间就断开连接了。 
+(1)两个核心设备可以解决单点故障
+(2)两个交换机可以直接连在一起
+一般都是用环形互连(口字形，三角形)
+--- 设备上有些协议可以自动检测到故障
+
+冗余线路，备用设备
+
+环路会导致问题
+(1)包被无限循环转发 --- 广播风暴
+IP层有TTL可以避免无线循环的包
+但Switch属于二层，不能用TTL
+现象：所有的端口都在频繁地闪
+(2)MAC地址表被频繁更新 --- MAC地址飘移(flapping)
+CPU开销很大
+现象：日志中会记录
+
+环路解决办法：生成树协议(STP)
+允许物理线路冗余
+选择性地阻塞某些端口，
+一旦某个物理线路断开，阻塞会被打开
+Cisco STP出厂时默认是打开的
+
+Hub不支持STP
+
+形成一个无还的树
+(1)选择根桥
+
+BPDU: 交换机之间交互BPDU信息
+
+STP数据包包含
+(1)Bridge ID:
+每个交换机都有一个桥ID
+桥ID分为两个部分：优先级(默认为32768)+MAC地址 --- Cisco/华为/中兴 都是32768 -- 允许修改
+选择桥ID最小的作为根桥
+刚开始，每个交换机都认为自己是根桥
+
+PVST: Cisco的私有协议，每个VLAN都会有自己的根桥 --- 这个协议中优先级默认为32769
+
+设置优先级
+>conf t
+>spanning-tree vlan 1 priority 0
+优先级只能设置为4096的倍数和0
+
+(2)每个交换机选定自己的根端口 -- 距离根桥开销最小的端口
+带宽决定了生成树的开销值
+10M链路，生成树的开销值是100
+100M....  19
+1G.....4
+10G.......2
+
+如果某个交换机有两条开销一样的路径，查看它上游的交换机的桥ID, 选择桥ID较小的那个
+如果交换机和它的上游交换机有两个端口相连，查看它的上游端口ID, 选择端口ID较小的那个（端口优先级(缺省128)+ID）
+
+<1>比根路径开销
+<2>比上游桥ID
+<3>比上游端口ID
+<4>
+RP端口 --- 根端口, 叶子交换机用来收发流量的，RP端口的对面一定是DP端口
+DP端口 --- 指定端口， 如果有两个Switch同行有能里发送数据到Hub(PC), 需要选定一个switch上的端口来用。DP端口对面可能是RP端口，也可能是下游设备
+
+在同一个交换机上，RP是用来连接根桥方向的。DP端口是用来连接远离根桥方向的
+一个交换机上有多个DP端口，但是只有一个RP端口
+每个段（两个设备间的连线）要选出唯一一个DP(更接近根桥的位置),  
+一个端口若既不是DP, 又不是RP, 就会被阻塞
+
+每个交换机记录的信息：根桥，RP和DPs
+
+如何知道大家都已经更新信息完毕？
+15秒，15秒后该转发的转发，该阻塞的阻塞
+一旦根桥确定以后，其它的交换机都不会再发BPDU了，只能有根桥每隔2秒发送一个BPDU.
+如果20秒都没有收到根桥的BPDU, 会重新启动重新计算:
+当上行端口出现问题时，下行的Switch2的RP端口20秒后超时，当前Switch把自己当作根桥发BPDU. 若这个BPDU信息到达另一个switch3的阻塞端口，这个端口的阻塞状态老化，从BP转为DP，进入侦听状态，30秒后可以转发 --- 至少要50秒才能更新正确的STP信息
+
+BPDU是个组播帧
+
+每个端口的状态改变：
+<1>侦听：计算生成树，确定RP, DP端口
+间隔15s  --- 为保证所有交换机都完成计算，找到了根桥（假设网络直径等于7(从根桥到最远的交换机有7个设备)，多余7个的无法计算）
+<2>学习：学习MAC地址，建立MAC表，为数据转发做准备
+间隔15s
+<3>阻塞的端口被阻塞，转发的端口可以转发
+
+只有Cisco的PVST在用STP, 华为用的是快速生成树
+
+[test] in Cisco Packet Tracer
+Switch1,2,3之间互连，刚开始端口都是黄色，表示在进行STP计算，计算完毕后，可以转发的端口显示绿色，阻塞的端口显示黄色 
+
+快速生成树(RSTP)
+<1>生成树是被动的，被动地等待计时器超时
+快速生成树一旦检测到故障，不必等待20秒（只等待3个间隔 ：6s）, 
+<2>快速生成树在设备之间是握手协商关系，两个之间一旦确定了RP, DP, 就会马上转发
+<3>如果一方的RP, DP信息更新，根其它交换机还会继续新的握手协议
+http://wenku.baidu.com/link?url=nnpD5owpzgnaHV1EoaRehooe7UB6mhBqoyaxzUXZ8WeXJgqcgb77Bgz_taVW8khb8SBOsk-64XZZxBwJRYxyWNx2-C-AMQswLhq0v-cQkUW
+http://wenku.baidu.com/link?url=9xRb0lLPP3m9wKzO-AUa7q9tfUpsG1hF8uIWgLiGbC1NNjoOfqusj2fWpWrXpgR5sZLRxCrLmX02Awe3mbcfff3J-tpNrqW6Kufv0t0XaFa
+
+
+Cisco特有的：PortFast, UplinkFast, BackboneFast
+PortFast
+边缘端口:不直接与任何交换机连接，也不通过端口所连接的网络间接与任何交换机相连的端口。
+PortFast 加快终端主机连接入stp网络的收敛.
+portfast只能用在接入层，也就是说交换机的端口是接HOST的才能起用portfast，如果是接交换机的就一定不能启用，否则会造成新的环路。portfast 能将2层端口立即进行转发状态，回避了监听和学习状态：
+正常状态： 阻塞->>监听―>>学习->>转发
+portfast ： 阻塞->>转发
+
+BackboneFast
+BackboneFast是对UplinkFast的一种补充，UplinkFast能够检测直连链路的失效，BackboneFast是用来检测间接链路的失效。当启用了BackboneFast的交换机检测到间接链路失效之后，会马上使阻塞的端口进入监听状态，少了20S的老化时间。
+如果要启用BackboneFast特性，我们应该在网络中的所有交换机上都启用。
+
+BPDU GUARD
+将SWITCH的端口设置为spanning-tree portfast后，如果这个端口接到其他SWITCH或者HUB上就可能造成环路问题。加上spanning-tree bpduguard enable之后，当这个端口在收到BPDU包后就会进入errdisable状态，从而避免环路。BPDU GUARD的功能是当这个端口收到任何的BPDU就马上设为Error-Disabled状态。
+
+etherchannel
+交换机S1, S2之间有两条链路相连，如果捆绑在一起，成为一个逻辑聚合链路 (trunk)，不但增加带宽，并提供冗余容错的能力。
+Cisco 交换机提供两种链路聚合协议：Cisco私有的PAgP、IEEE的LACP。
+
+PVST
+Cisco 交换机show running-config可以看到
+spanning tree mode PVST
+PVST是每个VLAN都有单独的生成树计算实例
+
+Switch#show spanning-tree
+VLAN0001
+  Spanning tree enabled protocol ieee
+  Root ID    Priority    32769
+             Address     0030.A351.A37E
+             Cost        19
+             Port        1(FastEthernet0/1)
+             Hello Time  2 sec  Max Age 20 sec  Forward Delay 15 sec
+
+  Bridge ID  Priority    32769  (priority 32768 sys-id-ext 1)
+             Address     00D0.971D.84D5
+             Hello Time  2 sec  Max Age 20 sec  Forward Delay 15 sec
+             Aging Time  20
+
+Interface        Role Sts Cost      Prio.Nbr Type
+---------------- ---- --- --------- -------- --------------------------------
+Fa0/1            Root FWD 19        128.1    P2p
+Fa0/2            Desg FWD 19        128.2    P2p
+
+Priority   默认是32768, 这里的32769加上了当前vlan号，对于其它的vlan也一样
+Cost 19是指本地去往跟的开销值(100Mbit/s)
+Prio.Nbr 128.1, 128.2是端口优先级，默认是128， .1, .2是端口号
+--- 跟端口在开销一样的情况下比的是上游的端口ID, 而非当前端口ID
+
+[调整PVST中交换机的优先级]
+Switch(config)#spanning-tree vlan 1 priority ?
+  <0-61440>  bridge priority in increments of 4096
+Switch(config)#spanning-tree vlan 1 priority 0
+
+PVST用的是STP
+
+[调整PVST中交换机的端口的优先级]
+调整端口的优先级，模拟器上不能调，但是真机上可以调
+Switch(config)#spanning-tree vlan 1 cost 39  --- 大于零一条链路的开销值(19+19)
+
+
+----------------------------------------------
+LACP: Link Aggregation Control Protocol
+LACPDU: Link Aggregation Control Protocol Data Unit
+

@@ -1,0 +1,181 @@
+----------------------------------------------
+NAT: 网络地址转换
+---------------------------------------------- 
+
+私有IP地址（用于企业内部） - NAT
+A: 10.0.0.0 - 10.255.255.255
+B: 172.16.0.0 - 172.31.255.255
+C: 192.168.0.0 - 192.168.255.255
+
+设备：三层交换机，路由器，防火墙
+
+NAT Table
+Inside Global IP   -   Inside Local IP   -  Outside Local IP  -  Outside Global IP 
+1.1.1.2                    10.1.1.2
+1.1.1.3                    10.1.1.3
+
+何时用？
+1, 内网上公网时，涉及私有IP
+2, 更换ISP(互联网运营商)时，公网IP不同
+3, 公司合并, 使用相同网段
+4, 一个IP分配给多个设备
+
+----------------------------------------------
+应用1：静态映射 --- 重要的设备向外网提供服务时用，用于隐藏内部IP
+----------------------------------------------
+e.g. 内网访问外网www.163.com. 
+<1>DNS解析 www.163.com -> 123.58.180.8
+<2>发送报文
+源IP   -    目的IP
+10.1.1.2(Inside Local IP)  -  123.58.180.8(Outside Local IP)
+<3>经过NAT
+源IP   -    目的IP
+1.1.1.2(Inside Global IP)  -  123.58.180.8(Outside Local IP)
+
+--- Outside Local IP: 外部在本地显示的IP, 在内网所看到的www.163.com的公网IP地址
+--- 通常Outside Global IP和Outside Global IP是一样的
+--- Outside Global IP ：外部设备实际的IP地址
+
+#int e0
+#ip address 10.1.1.1 255.0.0.0
+#ip nat inside
+
+#int s0
+#ip address 1.1.1.1 255.0.0.0
+#ip nat outside
+
+#ip nat inside source static 10.1.1.2 1.1.1.2
+
+
+test 1: 静态NAT
+<1>配置默认路由
+#conf t
+#ip route 0.0.0.0 0.0.0.0
+<2>添加静态路由
+#ip nat inside source static 192.168.1.1 10.1.10.100  --- 内部作为源地址，由内部发起访问
+#end
+#show ip nat translations
+<3>在inside/outside接口上应用
+#conf t
+#int fa1/0
+#ip nat inside
+#exit
+#int fa1/1
+#ip nat outside
+<4>查看NAT表
+#show ip nat translations
+
+配置inside global IP不在对方路由直连的网段时，对方路由需要添加静态IP
+#ip nat inside source static 192.168.1.1 1.1.1.1
+
+#ip route 1.1.1.1 255.255.255.0 10.1.10.1
+
+----------------------------------------------
+应用2：动态NAT ---  多对多的映射。
+----------------------------------------------
+--- 还可以支持一个公网IP可同时给多个私网IP使用，通过端口区分(NAPT)
+--- 动态NAT要数据包触发之后，才会写入NAT表
+
+e.g. 1.1.1.1 - 1.1.1.10(公网IP)
+<1>在inside/outside接口上应用
+#int e0
+#ip nat inside
+#int s0
+#ip nat outside
+<2>设置动态路由
+#conf t
+#ip nat pool nds 1.1.1.1 1.1.1.10 netmask 255.255.255.0  --- 公有地址池，nds是名字
+#access-list 1 permit 192.168.1.0 0.0.0.255  ---- 只允许这个网段的用户使用公网IP
+#ip nat inside source list 1 pool nds --- 把二者关联起来
+--- 以上设置没有先后顺序
+Or
+#ip nat inside source list 1 pool nds overload --- overload表示允许NAPT，这样的话在pool里面也可以使用端口复用
+<4>查看NAT表 --- 此时是空的
+#show ip nat translations
+<5>运营商设回来的路由
+#ip route 1.1.1.1 255.255.255.240 ....
+<6>ping 触发通信之后，#show ip nat translations可以看到NAT表
+
+----------------------------------------------
+应用3：端口复用(PAT，也叫NAPT) --- 动态NAT映射+端口
+----------------------------------------------
+使用场景：企业只申请了一个公网IP，供内部多个主机使用
+Inside Global IP是一样的，但是端口不同
+--- 这里所说的端口和四层的端口不同，所以不影响不同应用，不同协议的使用
+--- 随机端口1024 ~ 65535
+--- 目的端口是不转换的
+<1>在inside/outside接口上应用
+#int e0
+#ip nat inside
+#int s0
+#ip nat outside
+<2>
+#access-list 1 permit 192.168.1.0 0.0.0.255
+#ip nat inside source list 1 interface s0 overload --- interface s0是拥有公网IP的接口，overload 也可以不用加，默认自动会加上 -- 或者配置一个pool, start IP和end IP一样
+<3>test ping
+<4>
+#show ip nat translations
+
+如果购买的公网IP和物理接口的IP不在同一个网段，可以用环回接口作为outside接口
+#int loopback 0
+#ip add ...
+#ip nat inside source list 1 interface 环回接口
+
+----------------------------------------------
+高级应用1：端口地址映射 --- 静态NAT映射，加上了端口
+----------------------------------------------
+内部服务器对外开放，公网地址是2.2.2.2
+<1>购买两个IP, 一个给服务器用，一个给外部接口用
+如果内部有不止一台服务器
+<2>用端口地址映射
+e.g. web服务器的80端口映射到1.1.1.2的80端口，...
+<1>在inside/outside接口上应用
+#int fa0/0
+#ip nat inside
+#int fa1/0
+#ip nat outside
+<2>
+#ip nat inside source  static tcp 192.168.2.2 80 2.2.2.2 80
+#ip nat inside source  static tcp 192.168.2.3 20 2.2.2.2 20
+#ip nat inside source  static tcp 192.168.2.3 21 2.2.2.2 21
+<3>对方路由器要设置好路由
+#ip route 2.2.2.2 255.255.255.255 10.1.12.2
+<4>自己的路由器设置默认路由，使包可以发出去
+#ip route 0.0.0.0 0.0.0.0 10.1.12.1
+
+--- 这样配置后从外面ping 2.2.2.2是不通的，因为没人回 --- 这也是一个安全性的保证
+--- 但是访问2.2.2.2的80端口是可以的，它被指向处理这个服务的服务器
+
+----------------------------------------------
+高级应用2：TCP的负载均衡
+----------------------------------------------
+内部有多台服务器，同时提供网站服务，提供同样的功能
+inside: 10.1.1.2, 10.1.1.3, 10.1.1.4
+outside: I am a web server 1.1.1.2
+--- 由路由器进行负载分担
+
+NAT table
+Inside Global IP   -   Inside Local IP   -  Outside Local IP  -  Outside Global IP 
+1.1.1.2:80               10.1.1.2:80          172.20.7.1:256       172.20.7.1:256
+
+#ip nat inside destination list pool hello --- 内部作为目的地址，由外部发起访问
+#access-list 1 permit 1.1.1.2
+#ip nat pool hello 10.1.1.2 10.1.1.4 prefix-length 24 type rotary
+
+--- 对于内网主动发出去的包，inside destination的设置是不可用的，需要一个inside source的NAT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
